@@ -1,0 +1,59 @@
+armSNES-pico patch to upstream armSNES (libretro/libretro.c), GPL-2.0-or-later like the file it changes.
+Copyright (c) 2026 TheGammaSqueeze. Applied by build.sh to a copy in out/src.
+
+With ARMSNES_HOST_NO_HD the port makes no HD Mode 7 and no widescreen picture: the LK shows a
+picture up to the console's hires size (512 x 478), and the two pictures' buffers (9 MB) do not
+fit the 8 MiB core slot. Both options read Off whatever is set, and the buffers are a pixel each.
+
+--- a/libretro/libretro.c
++++ b/libretro/libretro.c
+@@ -214,12 +214,22 @@
+ // way, those lines drawn finer (fastPpuSetHdSink) and the others' pixels made larger; a widescreen
+ // frame is given with its columns more each side. Two pictures, as with outputs.
+ enum { WIDE_COLUMNS = 256 + 2 * FAST_PPU_WIDE_MOST, HD_WIDTH = WIDE_COLUMNS * 4, HD_HEIGHT = 239 * 4 };
++#ifdef ARMSNES_HOST_NO_HD
++// The host shows pictures up to the console's own hires size: no HD or widescreen picture is made
++// (the options read Off, below), and their buffers are a pixel each.
++static u16 hdOutputs[2][1];
++#else
+ static u16 hdOutputs[2][HD_WIDTH * HD_HEIGHT];
++#endif
+ static u32 hdRowStamp[CANVAS_HEIGHT];
+ static u8 hdRowScale[CANVAS_HEIGHT];
+ static u8 hdScale;
+ // Widescreen lines drawn at the console's scale, as hires pairs, and whether each has hires pixels.
++#ifdef ARMSNES_HOST_NO_HD
++static u16 wideRows[2][1];
++#else
+ static u16 wideRows[2][OUTPUT_HEIGHT * WIDE_COLUMNS * 2];
++#endif
+ static bool wideRowHires[OUTPUT_HEIGHT];
+ static u32 wideColumns = 256;
+ 
+@@ -228,6 +238,9 @@
+ }
+ 
+ static void hdLineDrawn(u32* at, const u32* block, unsigned scale, unsigned columns) {
++#ifdef ARMSNES_HOST_NO_HD
++	return;
++#endif
+ 	u32 row = (u32) (at - ppuCanvas) / CANVAS_WIDTH;
+ 	if ((scale > 1 && scale != hdScale) || columns != wideColumns || row - cropY >= cropHeight ||
+ 	    at != &ppuCanvas[row * CANVAS_WIDTH + cropX]) {
+@@ -1800,10 +1813,16 @@
+ 	static const struct OptionChoice hdScales[] = { { "2x", 2 }, { "3x", 3 }, { "4x", 4 } };
+ 	unsigned largest = maxWidth() * maxHeight();
+ 	hdScale = ppuHdScale = (u8) optionChoice(environment, "armsnes_hd_mode7", hdScales, 3, 0);
++#ifdef ARMSNES_HOST_NO_HD
++	hdScale = ppuHdScale = 0;
++#endif
+ 	// Widescreen: the columns each side that make the picture that wide, by the pixels' shape, rounded to
+ 	// 16.
+ 	static const struct OptionChoice ratios[] = { { "16:10", 1600 }, { "16:9", 1778 }, { "2:1", 2000 }, { "21:9", 2333 } };
+ 	int ratio = optionChoice(environment, "armsnes_widescreen", ratios, 4, 0);
++#ifdef ARMSNES_HOST_NO_HD
++	ratio = 0;
++#endif
+ 	u32 columns = 256;
+ 	if (ratio && systemBalanced && !cart.icd) {
+ 		double lines = regionPal() ? 239.0 : 224.0;
