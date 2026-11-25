@@ -12,10 +12,14 @@
 # libretro/ and shared/ are copied to out/src, the patches in patches/ (if any) are applied there,
 # and that copy is compiled together with the glue in pico/. Built: armSNES's core (src/ and
 # src/chips/, its fast line renderer src/fastppu.cpp included), its libretro port
-# (libretro/libretro.c) and the options helper it shares with the Armulators cores
+# (libretro/libretro.c, with its NTSC/PAL filter libretro/composite.c, which the link drops: the
+# filter is held Off) and the options helper it shares with the Armulators cores
 # (shared/libretro/options.c). Not built: the Super Game Boy's Game Boy (src/chips/gb.cpp and the
 # Gambatte tree it uses; the LK hands the SNES core cartridges only, pico/pico_nogb.c answers its
-# calls), the standalone app and the test tools.
+# calls), the port's zip reader (libretro/zip.c and zlib, for MSU-1 files in a zip; the LK gives no
+# path to look beside, pico/pico_nozip.c answers its calls), the standalone app and the test tools.
+# The SA-1 recompiler (src/chips/sa1_jit.inc) is upstream's for x86-64 and AArch64 only: on this
+# 32 bit target it compiles to nothing and the SA-1 runs the plain way.
 #
 # Target: the LK runs the core in 32 bit ARM state on CPU 0 of the MT6785 (a Cortex-A55) or the
 # MT8786. Built for ARMv8-A with NEON and hardware floating point (softfp calling convention, as the
@@ -57,8 +61,11 @@ printf '#define ARMSNES_PICO_VERSION "%s"\n' "$VERSION" > "$OUT/pico_version.h"
 SRC=$OUT/src
 TUNE=${TUNE:-cortex-a55}
 ARCH="-march=armv8-a+simd -mtune=$TUNE -marm -mfpu=neon-fp-armv8 -mfloat-abi=softfp"
-# upstream builds with -fwrapv (CMakeLists.txt): its arithmetic counts on wrapping
-BASE="$ARCH ${OPT:--O3} -fwrapv -DARMSNES_HOST_NO_HD -flto -ffunction-sections -fdata-sections -fno-common ${EXTRA_CFLAGS:-}"
+# upstream builds with -fwrapv (CMakeLists.txt): its arithmetic counts on wrapping.
+# -D_Thread_local=: upstream keeps a flag per thread (apuOnThread, set on the sound thread). This
+# target has no thread local storage and one thread, which is never the sound thread: a plain
+# variable that stays false is the same thing.
+BASE="$ARCH ${OPT:--O3} -fwrapv -DARMSNES_HOST_NO_HD -D_Thread_local= -flto -ffunction-sections -fdata-sections -fno-common ${EXTRA_CFLAGS:-}"
 # pico/include first: the headers newlib lacks for this target (pthread.h, sched.h's sched_yield)
 INC="-I$ROOT/pico/include -I$SRC/shared/libretro -I$SRC/src -I$SRC/src/chips -include $ROOT/pico/include/pico_time.h"
 CORE_FLAGS="$BASE -std=gnu11 -Wall -Wno-unused-parameter $INC"
@@ -75,11 +82,11 @@ RT_FLAGS="${BASE/-flto/} -std=gnu11 -fno-builtin -Wall -Wextra -I$ROOT/pico"
 # upstream CMakeLists.txt's armsnes library, less src/chips/gb.cpp
 CORE="src/bus.c src/cart.c src/cheat.c src/chips/bsx.c src/chips/competition.c src/chips/cx4.c
 	src/chips/gsu.c src/chips/icd.c src/chips/msu1.c src/chips/necdsp.c src/chips/obc1.c
-	src/chips/pirate.c src/chips/rtc.c src/chips/sa1.c src/chips/sa1fast.c src/chips/sdd1.c
-	src/chips/spc7110.c src/chips/st018.c src/chips/sufami.c src/cpu.c src/dsp.c src/input.c
-	src/mix.c src/ppu.c src/sha256.c src/smp.c src/state.c src/system.c"
+	src/chips/pirate.c src/chips/rtc.c src/chips/sa1.c src/chips/sa1block.c src/chips/sa1fast.c
+	src/chips/sdd1.c src/chips/spc7110.c src/chips/st018.c src/chips/sufami.c src/cpu.c src/dsp.c
+	src/input.c src/mix.c src/ppu.c src/sha256.c src/smp.c src/state.c src/system.c"
 CXXSRC="src/fastppu.cpp"
-PORT="libretro/libretro.c shared/libretro/options.c"
+PORT="libretro/composite.c libretro/libretro.c shared/libretro/options.c"
 
 OBJS=()
 obj() { echo "$OUT/obj/$(echo "${1%.*}" | tr '/' '_').o"; }
@@ -100,8 +107,9 @@ for f in $PORT; do
 done
 $CC $GLUE_FLAGS -c "$ROOT/pico/pico_core.c" -o "$OUT/obj/pico_core.o"
 $CC $GLUE_FLAGS -c "$ROOT/pico/pico_nogb.c" -o "$OUT/obj/pico_nogb.o"
+$CC $GLUE_FLAGS -I"$SRC/libretro" -c "$ROOT/pico/pico_nozip.c" -o "$OUT/obj/pico_nozip.o"
 $CC $RT_FLAGS -c "$ROOT/pico/pico_libc.c" -o "$OUT/obj/pico_libc.o"
-OBJS+=("$OUT/obj/pico_core.o" "$OUT/obj/pico_nogb.o" "$OUT/obj/pico_libc.o")
+OBJS+=("$OUT/obj/pico_core.o" "$OUT/obj/pico_nogb.o" "$OUT/obj/pico_nozip.o" "$OUT/obj/pico_libc.o")
 
 $CXX $BASE -nostartfiles -fno-exceptions -fno-rtti -Wl,--gc-sections -Wl,-T,"$ROOT/pico/blob.ld" \
 	-Wl,-Map,"$OUT/armsnes-pico.map" -o "$OUT/armsnes-pico.elf" "${OBJS[@]}" -lm -lc -lgcc

@@ -1,28 +1,21 @@
 armSNES-pico patch to upstream armSNES (libretro/libretro.c), GPL-2.0-or-later like the file it changes.
 Copyright (c) 2026 TheGammaSqueeze. Applied by build.sh to a copy in out/src.
 
-With ARMSNES_HOST_NO_HD the port makes no HD Mode 7 and no widescreen picture: the LK shows a
-picture up to the console's hires size (512 x 478), and the two pictures' buffers (9 MB) do not
-fit the 8 MiB core slot. Both options read Off whatever is set, and the buffers are a pixel each.
+With ARMSNES_HOST_NO_HD the port makes no HD Mode 7 picture, no widescreen picture and no NTSC/PAL
+filter picture: the LK shows a picture up to the console's hires size (512 x 478), and those are all
+larger. The three options read Off whatever is set. Their room is not made either: the HD pictures
+upstream allocates as every game starts (7.3 MB for up to 4x), the widescreen rows (1.8 MB) and the
+filtered picture (1.4 MB).
 
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -214,12 +214,22 @@
- // way, those lines drawn finer (fastPpuSetHdSink) and the others' pixels made larger; a widescreen
- // frame is given with its columns more each side. Two pictures, as with outputs.
- enum { WIDE_COLUMNS = 256 + 2 * FAST_PPU_WIDE_MOST, HD_WIDTH = WIDE_COLUMNS * 4, HD_HEIGHT = 239 * 4 };
-+#ifdef ARMSNES_HOST_NO_HD
-+// The host shows pictures up to the console's own hires size: no HD or widescreen picture is made
-+// (the options read Off, below), and their buffers are a pixel each.
-+static u16 hdOutputs[2][1];
-+#else
- static u16 hdOutputs[2][HD_WIDTH * HD_HEIGHT];
-+#endif
- static u32 hdRowStamp[CANVAS_HEIGHT];
+@@ -228,7 +228,13 @@
  static u8 hdRowScale[CANVAS_HEIGHT];
  static u8 hdScale;
  // Widescreen lines drawn at the console's scale, as hires pairs, and whether each has hires pixels.
 +#ifdef ARMSNES_HOST_NO_HD
++// The host shows pictures up to the console's own hires size: no HD, widescreen or filtered picture is
++// made (the options read Off, below), and the buffers for them are a pixel each or not made at all.
 +static u16 wideRows[2][1];
 +#else
  static u16 wideRows[2][OUTPUT_HEIGHT * WIDE_COLUMNS * 2];
@@ -30,7 +23,7 @@ fit the 8 MiB core slot. Both options read Off whatever is set, and the buffers 
  static bool wideRowHires[OUTPUT_HEIGHT];
  static u32 wideColumns = 256;
  
-@@ -228,6 +238,9 @@
+@@ -254,6 +260,9 @@
  }
  
  static void hdLineDrawn(u32* at, const u32* block, unsigned scale, unsigned columns) {
@@ -38,12 +31,51 @@ fit the 8 MiB core slot. Both options read Off whatever is set, and the buffers 
 +	return;
 +#endif
  	u32 row = (u32) (at - ppuCanvas) / CANVAS_WIDTH;
- 	if ((scale > 1 && scale != hdScale) || columns != wideColumns || row - cropY >= cropHeight ||
+ 	if ((scale > 1 && (scale != hdScale || !hdPictures)) || columns != wideColumns || row - cropY >= cropHeight ||
  	    at != &ppuCanvas[row * CANVAS_WIDTH + cropX]) {
-@@ -1800,10 +1813,16 @@
- 	static const struct OptionChoice hdScales[] = { { "2x", 2 }, { "3x", 3 }, { "4x", 4 } };
- 	unsigned largest = maxWidth() * maxHeight();
- 	hdScale = ppuHdScale = (u8) optionChoice(environment, "armsnes_hd_mode7", hdScales, 3, 0);
+@@ -287,6 +296,10 @@
+ static u32 frameColumns = 256, frameExtension;
+ 
+ static void hdAllocate(void) {
++#ifdef ARMSNES_HOST_NO_HD
++	// No room made: hdPictures stays NULL, and with it no HD or widescreen frame is given.
++	return;
++#endif
+ 	free(hdPictures);
+ 	hdRoom = (size_t) WIDE_COLUMNS * hdMost * 239u * hdMost;
+ 	hdPictures = calloc(2 * hdRoom, sizeof(u16));
+@@ -367,11 +380,18 @@
+ static int filter;
+ static u32 scanlines = 256;
+ static bool frameField;
++#ifdef ARMSNES_HOST_NO_HD
++static u16 filtered[1];
++#else
+ static u16 filtered[COMPOSITE_SCALE * WIDE_COLUMNS * OUTPUT_HEIGHT];
++#endif
+ 
+ // The frame's picture as a TV decoded it, three pixels to a column: each line twice, the second dimmed
+ // as the scanline, or an interlaced picture's lines once, each field on its own.
+ static void filterFrame(void) {
++#ifdef ARMSNES_HOST_NO_HD
++	return;
++#endif
+ 	u32 width = frameColumns * COMPOSITE_SCALE;
+ 	bool hires = outputWidth == 2 * frameColumns, interlace = frameScaleY == 2;
+ 	u32 fields = interlace ? 2 : 1, lines = outputHeight / fields;
+@@ -1982,15 +2002,25 @@
+ 	filter = optionChoice(environment, "armsnes_filter", filters, 2, COMPOSITE_OFF);
+ 	static const struct OptionChoice darkness[] = { { "Light", 192 }, { "Medium", 128 }, { "Dark", 64 } };
+ 	scanlines = (u32) optionChoice(environment, "armsnes_scanlines", darkness, 3, 256);
++#ifdef ARMSNES_HOST_NO_HD
++	filter = COMPOSITE_OFF;
++	scanlines = 256;
++#endif
+ 	ppuHdPerspective = !optionIs(environment, "armsnes_hd_mode7_perspective", "Off");
+ 	hdScale = ppuHdScale = filter ? 0 : (u8) optionChoice(environment, "armsnes_hd_mode7", hdScales, 7, 0);
+ 	if (hdScale > hdMost) {
+ 		hdScale = ppuHdScale = hdMost;
+ 	}
 +#ifdef ARMSNES_HOST_NO_HD
 +	hdScale = ppuHdScale = 0;
 +#endif

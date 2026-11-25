@@ -16,6 +16,9 @@
  *     sets armSNES's nearest ones; armSNES's own keys from the Core Settings page go straight
  *     through. Before the LK sets any, the options stand where the snes9x rows begin (4:3, the
  *     overscan lines hidden, linear interpolation, no hi-res blending).
+ *   - The pictures larger than the console's own (HD Mode 7, widescreen, the NTSC/PAL filter) are
+ *     not made (patches/0001-no-hd-pictures.patch), so their options are left off the Core Settings
+ *     page, as are armSNES's turbo options: turbo is the LK's.
  *   - Options otherwise as in armNES-pico: a table GET_VARIABLE answers from, GET_VARIABLE_UPDATE
  *     reporting a change once, the port's version 2 definitions kept for the Core Settings page.
  *   - Run ahead's quick snapshot (state_save_ra) is snes9x's own: here it says "unsupported" and the
@@ -179,7 +182,9 @@ static bool copt_hidden(const char *key)
 	       !strcmp(key, "armsnes_crop_vertical") || !strcmp(key, "armsnes_interpolation") ||
 	       !strcmp(key, "armsnes_hires_blend") ||
 	       !strcmp(key, "armsnes_threads") ||						/* one CPU */
-	       !strcmp(key, "armsnes_turbo_buttons") || !strcmp(key, "armsnes_turbo_period") ||	/* the LK's turbo */
+	       starts(key, "armsnes_turbo_") ||							/* the LK's turbo */
+	       starts(key, "armsnes_hd_") || starts(key, "armsnes_widescreen") ||		/* pictures the LK */
+	       !strcmp(key, "armsnes_filter") || !strcmp(key, "armsnes_scanlines") ||		/* cannot show */
 	       !strcmp(key, "armsnes_left_stick_dpad") || !strcmp(key, "armsnes_stick_invert") ||	/* the LK maps the pad */
 	       starts(key, "armsnes_port") || !strcmp(key, "armsnes_gun_aim") ||		/* no mouse, gun or keypad */
 	       !strcmp(key, "armsnes_aim_sensitivity") || !strcmp(key, "armsnes_crosshair") ||
@@ -346,7 +351,8 @@ static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, un
 	unsigned buttons;
 	(void) index;
 	if ((device & RETRO_DEVICE_MASK) != RETRO_DEVICE_JOYPAD || port > 1) return 0;
-	buttons = pad(port);
+	/* L3 and R3 are armSNES's turbo L and R: no SNES pad has them, and turbo is the LK's */
+	buttons = pad(port) & ~(1u << RETRO_DEVICE_ID_JOYPAD_L3 | 1u << RETRO_DEVICE_ID_JOYPAD_R3);
 	if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return (int16_t) (buttons & 0xFFFFu);
 	return id < 16 ? (int16_t) ((buttons >> id) & 1u) : 0;
 }

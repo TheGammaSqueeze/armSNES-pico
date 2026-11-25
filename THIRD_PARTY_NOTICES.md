@@ -11,10 +11,11 @@ Runtime Library Exception.
   recorded in this repository.
 - Copyright (c) 2026 Magnominus. armSNES's own files are GPL-2.0-or-later (`upstream/LICENSE`).
 - Compiled: the core (`src/`, `src/chips/` less `gb.cpp`, the line renderer `src/fastppu.cpp`), the
-  libretro port (`libretro/libretro.c`) and the options helper (`shared/libretro/options.c`), with
-  `patches/0001-no-hd-pictures.patch` applied. Not compiled: the Super Game Boy's Game Boy
-  (`src/chips/gb.cpp`, `gambatte/`), the standalone app (`app/`, the `armulators` submodule) and the
-  test tools (`tests/`).
+  libretro port (`libretro/libretro.c`, and its NTSC/PAL filter `libretro/composite.c`, which the
+  link leaves out as the filter is held off) and the options helper (`shared/libretro/options.c`),
+  with `patches/0001-no-hd-pictures.patch` applied. Not compiled: the Super Game Boy's Game Boy
+  (`src/chips/gb.cpp`, `gambatte/`), the port's zip reader (`libretro/zip.c`, and so no zlib), the
+  standalone app (`app/`, the `armulators` submodule) and the test tools (`tests/`).
 - Parts of it under other licences, as upstream states:
   - **ares** (Copyright (c) 2004-2025 ares team, Near et al., ISC, `upstream/LICENSES/ISC-ares.txt`):
     the emulation armSNES ports to C keeps its notice.

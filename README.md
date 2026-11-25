@@ -24,9 +24,16 @@ upstream does not target, so its behaviour here says nothing about armSNES itsel
   both run on the game's thread, as upstream does when threads are not to be had.
 - **No Super Game Boy.** The LK hands the SNES core cartridges only, so the Game Boy inside a Super
   Game Boy (upstream's `src/chips/gb.cpp`, with Gambatte) is not built (`pico/pico_nogb.c`).
-- **No HD Mode 7 or widescreen picture** (`patches/0001-no-hd-pictures.patch`): the LK shows a
-  picture up to the console's own hires size, and those two pictures' buffers would not fit in
-  memory. Both options read Off.
+- **No HD Mode 7, widescreen or NTSC/PAL filter picture** (`patches/0001-no-hd-pictures.patch`):
+  the LK shows a picture up to the console's own hires size, and those three are larger. Their
+  options read Off and are not on the Core Settings page, and the memory upstream sets aside for
+  them when a game starts is not taken.
+- **No SA-1 recompiler.** Upstream's is for x86-64 and 64 bit ARM; the LK runs the core as 32 bit
+  ARM code, where armSNES runs the SA-1 the plain way and has no such option.
+- **No MSU-1 files.** The LK hands over a game's bytes with no path, so there is nothing to look
+  beside; the port's zip reader for them is not built (`pico/pico_nozip.c`).
+- **Turbo is the LK's.** armSNES's own turbo options are not on the Core Settings page, and L3 and
+  R3 (its turbo L and R) are never passed to it.
 - **No firmware files.** A game whose chip needs a firmware file the dump does not carry (DSP-1 to
   DSP-4, ST010, ST011, Cx4, ST018) does not start; snes9x runs those.
 - The LK's own picture and sound rows (aspect, overscan, audio filter, hi-res blend) are snes9x's;
@@ -60,6 +67,7 @@ commit the blob was built from.
 | `pico/pico_core.c` | the LK's SNES core interface (`snes_core_abi.h`) filled in for armSNES's libretro port |
 | `pico/pico_libc.c` | the heap over the LK's arena, newlib's system calls, the thread calls that start none |
 | `pico/pico_nogb.c` | the Super Game Boy's Game Boy, answered as one with no game |
+| `pico/pico_nozip.c` | the port's zip reader (MSU-1 files in a zip), answered as an archive that is not there |
 | `pico/snes_core_abi.h` | a copy of `lk-mt6785/emu/snes9x/snes_core_abi.h`; the LK's copy is the reference |
 | `pico/blob.ld` | link script: flat image at 0x4F000000, up to 16 MiB with its static memory |
 | `build.sh` | builds `out/armsnes-pico.blob` |
